@@ -10,7 +10,6 @@ import pandas as pd
 
 #the constants
 RAW_PATH = "transactions_raw.csv"
-CLEAN_PATH = "transactions_clean.csv"
 TEXT_COLUMNS = ["merchant_category", "city"]
 MIN_VALID_AMOUNT = 1
 MAX_VALID_AMOUNT = 1_000_000      # genuine amounts top out near INR 106k
@@ -39,7 +38,6 @@ def clean_transactions(raw_df):
 
 #Feature engineering
 def add_features(df):
-    """Return a copy of df with row-level engineered features (no fitting, so no leakage)."""
     df = df.copy()
 
     df["amount_vs_avg_ratio"] = df["amount_inr"] / df["avg_amount_30d_inr"]             #feature1: amount vs average ratio
@@ -48,7 +46,6 @@ def add_features(df):
     return df
 
 
-# Backwards-compatible name used in CLAUDE.md.
 clean = clean_transactions
 
 #Leakage table for chargeback_filed 
@@ -171,9 +168,6 @@ def main():
 
     print()
     self_test()
-#Saving the cleaned data
-    df.to_csv(CLEAN_PATH, index=False)
-    print(f"Wrote {CLEAN_PATH} ({len(df):,} rows, {df.shape[1]} columns)")
 
 
 if __name__ == "__main__":
