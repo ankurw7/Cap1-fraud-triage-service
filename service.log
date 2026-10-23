@@ -1,0 +1,32 @@
+2026-10-23 21:11:30,682 INFO /score status=200 latency_ms=13.4 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-23 21:11:30,697 INFO /score status=200 latency_ms=12.5 txn_id=T100002 probability=0.9596 human_review=True
+2026-10-23 21:11:30,716 WARNING /score status=200 latency_ms=13.5 txn_id=T100003 probability=0.3224 human_review=True override=True
+2026-10-23 21:11:30,736 WARNING /score status=400 latency_ms=1.2
+2026-10-23 21:11:30,754 WARNING /score status=422 latency_ms=0.6
+2026-10-23 21:11:30,787 INFO /case status=200 latency_ms=18.3 txn_id=T900002 probability=0.9596 human_review=True
+2026-10-23 21:11:30,815 WARNING /case status=200 latency_ms=14.6 txn_id=T900005 probability=0.9596 human_review=True safe_default=True
+2026-10-23 21:11:30,849 ERROR /case status=503 latency_ms=14.4 txn_id=T900099 probability=0.9596
+2026-10-23 21:11:30,882 INFO /case status=200 latency_ms=12.2 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-23 21:11:30,914 INFO /case status=200 latency_ms=12.5 txn_id=T100004 probability=0.9596 human_review=True
+2026-10-24 00:05:03,186 INFO /score status=200 latency_ms=19.3 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-24 00:05:03,202 INFO /score status=200 latency_ms=13.4 txn_id=T100002 probability=0.9596 human_review=True
+2026-10-24 00:05:03,249 WARNING /score status=200 latency_ms=26.5 txn_id=T100003 probability=0.3224 human_review=True override=True
+2026-10-24 00:05:03,269 WARNING /score status=400 latency_ms=0.9
+2026-10-24 00:05:03,284 WARNING /score status=422 latency_ms=0.6
+2026-10-24 00:05:03,302 INFO /case status=200 latency_ms=15.2 txn_id=T900002 probability=0.9596 human_review=True
+2026-10-24 00:05:03,331 WARNING /case status=200 latency_ms=14.9 txn_id=T900005 probability=0.9596 human_review=True safe_default=True
+2026-10-24 00:05:03,362 ERROR /case status=503 latency_ms=14.9 txn_id=T900099 probability=0.9596
+2026-10-24 00:05:03,377 INFO /case status=200 latency_ms=12.5 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-24 00:05:03,408 INFO /case status=200 latency_ms=14.1 txn_id=T100004 probability=0.9596 human_review=True
+2026-10-24 00:07:16,123 WARNING /case status=200 latency_ms=29.5 txn_id=T900006 probability=0.4272 human_review=True override=True
+2026-10-24 00:07:33,083 INFO /case status=200 latency_ms=14.3 txn_id=T900006 probability=0.4272 human_review=True
+2026-10-24 00:08:21,653 INFO /score status=200 latency_ms=15.2 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-24 00:08:21,670 INFO /score status=200 latency_ms=14.0 txn_id=T100002 probability=0.9596 human_review=True
+2026-10-24 00:08:21,698 WARNING /score status=200 latency_ms=14.2 txn_id=T100003 probability=0.3224 human_review=True override=True
+2026-10-24 00:08:21,702 WARNING /score status=400 latency_ms=0.8
+2026-10-24 00:08:21,716 WARNING /score status=422 latency_ms=0.6
+2026-10-24 00:08:21,748 INFO /case status=200 latency_ms=17.4 txn_id=T900002 probability=0.9596 human_review=True
+2026-10-24 00:08:21,779 WARNING /case status=200 latency_ms=17.2 txn_id=T900005 probability=0.9596 human_review=True safe_default=True
+2026-10-24 00:08:21,800 ERROR /case status=503 latency_ms=17.7 txn_id=T900099 probability=0.9596
+2026-10-24 00:08:21,839 INFO /case status=200 latency_ms=14.7 txn_id=T100001 probability=0.1312 human_review=False
+2026-10-24 00:08:21,886 INFO /case status=200 latency_ms=29.7 txn_id=T100004 probability=0.9596 human_review=True

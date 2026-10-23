@@ -1,4 +1,4 @@
-"""train.py - Stage 2 (Part B): fraud model, class imbalance and alert threshold.
+"""train.py - Part B: fraud model, class imbalance and alert threshold.
 Run:  python train.py
 
     from train import build_final_model
