@@ -7,7 +7,8 @@ Run:  uvicorn app:app --port 8000      (no --reload: restart to reset the mock's
     GET  /metrics   request, error and human-review counters
 
 The model is rebuilt once at start-up (build_final_model); nothing is loaded from disk.
-One middleware writes exactly one service.log line per POST and updates the counters."""
+One middleware writes exactly one service.log line per POST and updates the counters.
+"""
 
 import logging
 import time

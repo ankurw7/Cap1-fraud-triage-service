@@ -7,6 +7,7 @@ Run:  python retrieval.py      (prints the retrieval table)
 
 TF-IDF with default settings, fitted on the text field of the six policies;
 the best policy is the one with the highest cosine similarity to the query.
+
 """
 
 import json

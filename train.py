@@ -4,9 +4,7 @@ Run:  python train.py
     from train import build_final_model
     bundle = build_final_model()   # {"model", "columns", "median", "threshold"}
 
-The model is rebuilt in memory every time; nothing is written to disk.
-Choices (imbalance method, hyper-parameters, threshold) are made on the
-training and validation splits only. The test split is used once, at the end."""
+"""
 
 #Imports and configuration
 
@@ -38,6 +36,7 @@ BEST_PARAMS = {"max_depth": None, "min_samples_leaf": 5}   # found by GridSearch
 # clean_transactions() removes duplicates and invalid amounts.
 # add_features() creates the three additional features.
 # get_dummies() converts categorical columns to one-hot encoding.
+
 def load_dataset():
     df = add_features(clean_transactions(load_raw()))
     X = pd.get_dummies(df.drop(columns=EXCLUDED_COLUMNS), dtype=int)

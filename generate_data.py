@@ -1,7 +1,10 @@
 """generate_data.py - synthetic, fictional Razorpay Merchant Risk Desk data.
 Run once:  python generate_data.py
+
 Writes transactions_raw.csv, fraud_policies.json, retrieval_queries.json,
 case_scenarios.json into the current folder. Standard library only."""
+
+
 import csv
 import json
 import math

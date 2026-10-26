@@ -1,6 +1,6 @@
 """casenote.py - Part C: policy-grounded case notes with validation.
 
-Run:  python casenote.py       (resets the mock, runs the 10 scenarios)
+Run:  python casenote.py 
 
     from casenote import run_case
     result = run_case("T900001", 0.96, 82000, "card payment above INR 50000 from a new device")
@@ -36,9 +36,8 @@ CASE_NOTE_SCHEMA = {
 
 SAFE_DEFAULT_SUMMARY = "Automated case note unavailable; manual review required."
 
-
+#Role -> task -> constraints -> output format, plus the four labelled lines.
 def build_prompt(txn_id, fraud_probability, amount_inr, policy_id, policy_text) -> str:
-    """Role -> task -> constraints -> output format, plus the four labelled lines."""
     props = CASE_NOTE_SCHEMA["properties"]
     allowed = "\n".join(
         f"- {key}: " + (" | ".join(props[key]["enum"]) if "enum" in props[key] else "string")
@@ -63,9 +62,9 @@ def build_prompt(txn_id, fraud_probability, amount_inr, policy_id, policy_text) 
         f"{allowed}\n"
     )
 
-
+#Return (note, gate): gate 0 = passed, else the first gate that failed.
 def validate(text, retrieved_policy_id):
-    """Return (note, gate): gate 0 = passed, else the first gate that failed."""
+   
     # Gate 1: valid JSON and a JSON object.
     try:
         note = json.loads(text)
@@ -98,9 +97,8 @@ def safe_default(policy_id) -> dict:
         "policy_id": policy_id,
     }
 
-
+#Retrieve, prompt, validate, retry, fall back safely, then apply the guardrail.
 def run_case(txn_id, fraud_probability, amount_inr, question, max_attempts=MAX_ATTEMPTS) -> dict:
-    """Retrieve, prompt, validate, retry, fall back safely, then apply the guardrail."""
     policy_id, policy_text, score = retrieve(question)
     result = {
         "status": "ok", "attempts": 0, "failures": [], "case_note": None,
@@ -174,7 +172,7 @@ def main():
     except ConnectionError:
         print("\n  T900099: ConnectionError raised to the caller (not swallowed)")
     miss = run_case("T800000", 0.9, 1000, "what is the cafeteria menu today")
-    print(f"  Out-of-scope question: status {miss['status']}, attempts {miss['attempts']}, "
+    print(f"Out-of-scope question: status {miss['status']}, attempts {miss['attempts']}, "
           f"case_note {miss['case_note']}")
 
     expected = [
@@ -189,8 +187,12 @@ def main():
         ("P3", 3, [1, 2], "hold_for_review", False, False),
         ("P2", 2, [3], "hold_for_review", False, False),
     ]
-    observed = [(r["case_note"]["policy_id"], r["attempts"], r["failures"], r["case_note"]["recommended_action"],
-                 r["safe_default"], r["guardrail_override"]) for r in results]
+    observed = [(r["case_note"]["policy_id"], 
+                 r["attempts"],
+                 r["failures"], 
+                 r["case_note"]["recommended_action"],
+                 r["safe_default"], 
+                 r["guardrail_override"]) for r in results]
     assert observed == expected
     assert all(r["status"] == "ok" for r in results)
     assert calls == 19 and len(first) == 3 and len(retried) == 6

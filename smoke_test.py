@@ -5,7 +5,8 @@ Run:  uvicorn app:app --port 8000      (terminal 1, restart before every run)
       python smoke_test.py --extra     (on its own fresh server: T900006 guardrail check)
 
 mock_llm remembers call counts per txn_id, so a second run against the same
-server gives different attempts. Restart the server first."""
+server gives different attempts. Restart the server first.
+"""
 
 import json
 import sys
