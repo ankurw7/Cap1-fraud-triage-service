@@ -1,29 +1,86 @@
-# Cap1-fraud-triage-service
-Fraud triage service: data prep, fraud model, policy-grounded case notes, FastAPI service
+# Razorpay Merchant Risk Desk — Fraud Triage Service
 
-## Part A: Data cleaning (`prepare.py`)
+A fraud triage service built in four connected Parts: data preparation, a tuned fraud model with an alert threshold, policy-grounded case notes from a validated LLM, and a FastAPI service. Risky payments go to human review. A flagged payment is never approved automatically.
 
-Run `python prepare.py`. Each number below is printed by the script and checked with an assert.
+## Overview
 
-**Raw data:** 6,090 rows × 14 columns. 90 rows are exact duplicates. `merchant_category` and `city` each have 24 spellings, because of mixed case and extra spaces, but only 6 real values. After removing duplicates there are 6,000 rows: 76 have no amount, 193 have no distance and 5 have impossible amounts (below 1 or above 1,000,000).
+**Key capabilities**
+- Audit and clean the raw transactions, and engineer three risk features.
+- Tune a random forest for class imbalance and choose an alert threshold `t*` on validation.
+- Retrieve the matching fraud policy with TF-IDF and refuse off-topic questions.
+- Validate LLM case notes with three gates, retries, a safe default and an approve guardrail.
+- Serve `/health`, `/score`, `/case` and `/metrics` with input checks, 503 handling, logging and metrics.
 
-**Cleaning:** drop duplicates → fix the text → drop rows with a missing or impossible amount. This leaves **5,919 rows**. I left the 191 missing distances unfilled. They will be filled in Part B using the training-split median, to avoid leakage.
+**Important:** this is an educational capstone project on synthetic data. It is not affiliated with Razorpay and is not a production fraud system.
+
+## Project Structure
+
+All files live in the repo root, and every command is run from there. No cleaned data or model is written to disk.
+
+```text
+Cap1-fraud-triage-service/
+├── generate_data.py        # Provided: builds transactions_raw.csv (not modified)
+├── mock_llm.py             # Provided: offline stand-in for the hosted LLM (not modified)
+├── transactions_raw.csv    # Provided: raw transactions (6,090 rows × 14 columns)
+├── fraud_policies.json     # Provided: the six fraud policies P1–P6
+├── retrieval_queries.json  # Provided: the 10 retrieval test queries
+├── case_scenarios.json     # Provided: case-note scenarios S1–S10
+│
+├── prepare.py              # Part A: clean_transactions(), add_features(), audit
+├── train.py                # Part B: model comparison, tuning, t*, build_final_model()
+├── retrieval.py            # Part C: TF-IDF policy retrieval, retrieve(), MIN_SCORE
+├── casenote.py             # Part C: build_prompt(), validate(), run_case()
+├── app.py                  # Part D: FastAPI service (/health, /score, /case, /metrics)
+├── smoke_test.py           # Part D: sends Q1–Q11 and prints PASS/FAIL + /metrics
+├── service.log             # Part D: log from one fresh smoke run
+├── requirements.txt        # pandas==3.*, scikit-learn==1.9.*, numpy, fastapi, uvicorn, pydantic, requests
+└── README.md
+```
+
+## Reproduce
+
+Tested with Python 3.14.6, pandas 3.1 and scikit-learn 1.9.1. No paid APIs or network access are needed. `transactions_raw.csv` is committed (MD5 `8716797e8bc1a477df5f52cbc8aae3b8`), so you don't need to regenerate it.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+python prepare.py        # Part A audit
+python train.py          # Part B tables (~40 s)
+python retrieval.py      # Part C retrieval table
+python casenote.py       # Part C scenario table
+uvicorn app:app --port 8000
+```
+
+When the server reports `Application startup complete`, open a second terminal, activate the virtual environment and run `python smoke_test.py`. It should end with `Total 11/11` and `Metrics match expected: True`. Restart the server before each smoke run, because the mock LLM counts how many times it has seen each transaction ID. Every script asserts its own checkpoints, so a wrong result fails loudly.
+
+## Part A — Data Audit and Feature Engineering
+
+| Audit item | Result |
+|---|---:|
+| Raw rows × columns | 6,090 × 14 |
+| Exact duplicate rows | 90 |
+| Spellings of `merchant_category` / `city` (raw → cleaned) | 24 → 6 each |
+| Missing `amount_inr` (after removing duplicates) | 76 |
+| Impossible amounts (< 1 or > 1,000,000) | 5 |
+| **Rows after cleaning** | **5,919** |
+| Missing distance after cleaning (left unfilled) | 191 |
+| Fraud prevalence | 366 rows (6.18%) |
+
+**Cleaning order:** drop duplicates → strip and title-case the text → drop missing amounts → keep amounts between 1 and 1,000,000. Missing distances are filled in Part B with the training-split median, so no statistic comes from validation or test rows.
 
 **Features:** `amount_vs_avg_ratio` (max 13.11), `is_night` for hour ≤ 5 (365 rows) and `high_value` for amounts above INR 50,000 (17 rows).
 
-**Imbalance:** 366 of the 5,919 rows are fraud (6.18%). Predicting "never fraud" gives 93.82% accuracy but 0 recall, so I'll judge the model with ROC-AUC, PR-AUC, precision and recall.
+**Imbalance:** always predicting "not fraud" gives 93.82% accuracy but 0 recall, so the model is judged on precision, recall and F1, not accuracy.
 
-**Leakage:** 304 of the 373 chargeback rows are fraud, compared with 62 of the 5,546 rows without a chargeback. A chargeback is only filed after settlement, so I excluded `chargeback_filed`. I also excluded `txn_id`, `customer_id` and `is_fraud`.
+**Leakage:** 304 of the 373 rows with a chargeback are fraud, compared with 62 of the 5,546 rows without one. A chargeback is only filed after settlement, so `chargeback_filed` is excluded from the inputs, along with `txn_id`, `customer_id` and the target `is_fraud`.
 
-## Part B: Fraud model (`train.py`)
+## Part B — Model Training and Threshold Selection
 
-Run `python train.py` (about 40 seconds). Each number below is printed by the script and checked with an assert.
+There are 26 input columns: 7 raw numeric columns, the 3 engineered features and 16 one-hot columns. The split is 60/20/20, stratified, giving 3,551 / 1,184 / 1,184 rows with 220 / 73 / 73 fraud cases. Missing distance is filled with the training median (12.6 km).
 
-**Inputs:** 26 columns. These are the 7 raw numeric columns (`amount_inr`, `hour_of_day`, `txn_count_last_24h`, `avg_amount_30d_inr`, `distance_from_home_km`, `is_new_device`, `account_age_days`), the 3 engineered features and 16 one-hot columns for category, city and payment mode.
-
-**Splits:** 60/20/20, stratified, so train/validation/test have 3,551 / 1,184 / 1,184 rows and 220 / 73 / 73 fraud cases. I filled missing distance in all three splits with the training median (12.6 km).
-
-**Imbalance (logistic regression, validation, threshold 0.5):**
+**Imbalance handling (logistic regression, validation, threshold 0.5)**
 
 | Method | Precision | Recall | F1 |
 |---|---:|---:|---:|
@@ -31,36 +88,40 @@ Run `python train.py` (about 40 seconds). Each number below is printed by the sc
 | `class_weight="balanced"` | 0.252 | 0.781 | 0.381 |
 | Over-sampled (6,662 rows) | 0.257 | 0.781 | 0.386 |
 
-The plain model misses about two-thirds of the fraud. Balancing the classes, either with class weights or by over-sampling, more than doubles recall, at the cost of many more false alarms. Both balancing methods give almost the same result, so I used class weights because they don't change the data.
+Balancing more than doubles recall, at the cost of many more false alarms. Both methods give almost the same result, so I used class weights because they don't change the data.
 
-**Model choice:** with 5-fold CV on the training split, balanced LR scored F1 0.402 (sd 0.015) and an untuned balanced random forest scored 0.453. A grid search over `max_depth` × `min_samples_leaf` (12 combinations) picked `max_depth=None, min_samples_leaf=5`, with CV F1 0.465 (the brief gives 0.464; the unrounded value is 0.4646). Shallow trees (depth 4–6) underfit, and larger leaves smooth away the small fraud groups, so the deep forest with small leaves won. This tuned forest is my final model.
+**Model choice (5-fold CV F1 on the training split):** balanced LR scored 0.402 and an untuned balanced random forest 0.453. A grid search picked the tuned forest (`max_depth=None`, `min_samples_leaf=5`) at **0.465**. Shallow trees underfit, and larger leaves smooth away the small fraud groups.
 
-**Threshold (validation):**
+**Threshold selection (validation)**
 
 | t | Flagged | Precision | Recall |
 |---|---:|---:|---:|
 | 0.3 | 302 | 0.209 | 0.863 |
-| 0.4 | 191 | 0.272 | 0.712 |
+| **0.4** | **191** | **0.272** | **0.712** |
 | 0.5 | 122 | 0.352 | 0.589 |
 | 0.6 | 73 | 0.507 | 0.507 |
 
-I picked the highest threshold that still catches at least 65% of fraud, so **t\* = 0.4**.
+`t*` is the highest threshold that keeps validation recall ≥ 0.65, so **t\* = 0.4**.
 
-**Test (used once, at 0.4):** precision 0.281, recall 0.781, F1 0.413, with 203 of 1,184 flagged (TN 965, FP 146, FN 16, TP 57). The brief gives 202 flagged and 145 FP. The difference is one legitimate transaction that scores 0.4005 on my machine, and all the validation numbers match exactly.
+**Test set (used once, at 0.4):** precision **0.281**, recall **0.781**, F1 **0.413**, with 203 of 1,184 payments flagged.
 
-*Note for the risk committee:* at this threshold the model catches about 78% of fraud (57 of 73) by holding about 17% of payments. A little over 1 in 4 held payments is really fraud, so analysts will mostly be clearing false alarms, and the review team has to be sized for that. 16 fraud cases still get through. Raising the threshold to 0.5 would cut the queue by about a third but miss noticeably more fraud. I'd start at 0.4 and review it once real chargeback data comes in.
+```text
+                 Predicted 0   Predicted 1
+Actual 0              965           146
+Actual 1               16            57
+```
 
-**Leakage check:** adding `chargeback_filed` as a 27th column raises validation F1 from 0.441 to 0.797. That jump is the leak. The column is only known after settlement, so a model that uses it would look great in testing and fail in production.
+The brief gives 202 flagged. The difference is one legitimate transaction that scores 0.4005 on my machine. All the validation numbers match the brief exactly.
 
-**Top 5 features:** `amount_vs_avg_ratio`, `txn_count_last_24h`, `amount_inr`, `account_age_days` and `distance_from_home_km`. These are the signals I'd expect: an amount far above the customer's usual spend, a burst of transactions, a new account and an unusual location.
+**Note for the risk committee:** the model catches about 78% of fraud by holding about 17% of payments. Only 1 in 4 held payments is really fraud, so the review team has to be sized for the false alarms. Raising the threshold to 0.5 would cut the queue by about a third but miss noticeably more fraud. I'd start at 0.4 and review it once real chargeback data comes in.
 
-`build_final_model()` rebuilds the model in memory and returns `{"model", "columns", "median", "threshold"}` for Part D. Nothing is saved to disk.
+**Leakage check:** adding `chargeback_filed` raises validation F1 from 0.441 to 0.797. A model that uses it would look great in testing and fail in production.
 
-## Part C: Policy-grounded case notes (`retrieval.py`, `casenote.py`)
+**Top features:** `amount_vs_avg_ratio`, `txn_count_last_24h`, `amount_inr`, `account_age_days` and `distance_from_home_km`. These are an unusually large amount, a burst of transactions, a new account and an unusual location.
 
-Run `python retrieval.py`, then `python casenote.py`. Both scripts check their own results with asserts.
+## Part C — Policy Retrieval and Case Notes
 
-**Retrieval:** TF-IDF with default settings, fitted on the six policy texts, matched by cosine similarity. All 8 in-scope queries hit.
+**Retrieval:** default `TfidfVectorizer()` fitted on the six policy texts, matched by cosine similarity. 8/8 in-scope queries match and 2/2 off-topic queries are refused.
 
 | Query | Expected | Retrieved | Score |
 |---|---|---|---:|
@@ -75,9 +136,9 @@ Run `python retrieval.py`, then `python casenote.py`. Both scripts check their o
 | what is the cafeteria menu today | none | refused | 0.4251 |
 | how do I reset my email password | none | refused | 0.0000 |
 
-I set `MIN_SCORE = 0.45`. It sits between the highest off-topic score (0.4251) and the lowest on-topic score (0.4862), so both off-topic questions are refused without calling the model.
+`MIN_SCORE = 0.45` sits between the highest off-topic score (0.4251) and the lowest on-topic score (0.4862). A refused query never calls the model.
 
-**Case notes:** each reply has to pass three gates, all driven by one JSON-Schema-style dict. Gate 1 checks that the reply is a JSON object. Gate 2 checks that all five keys are present and are strings. Gate 3 checks that every value is allowed and that `policy_id` matches the policy I retrieved. A failed reply is retried up to 3 times. If all three fail, the case gets a safe default (high priority, `hold_for_review`), and an `approve` with fraud probability ≥ 0.5 is always changed to `hold_for_review`.
+**Case notes:** each reply must pass three gates. Gate 1 checks that it is a JSON object. Gate 2 checks that all five keys are present and are strings. Gate 3 checks that every value is allowed and that `policy_id` matches the retrieved policy. A failed reply is retried, up to 3 calls in total. After that the case gets a safe default (high, `customer_care`, `hold_for_review`). An `approve` with probability ≥ 0.5 is changed to `hold_for_review` by the guardrail.
 
 | Scenario | Policy | Attempts | Failures | Final action | Note |
 |---|---|---:|---|---|---|
@@ -92,17 +153,23 @@ I set `MIN_SCORE = 0.45`. It sits between the highest off-topic score (0.4251) a
 | S9 T900009 | P3 | 3 | [1, 2] | hold_for_review | |
 | S10 T900010 | P2 | 2 | [3] | hold_for_review | |
 
-All ten have status `ok`. In total there were 19 model calls: 3 notes were valid on the first call, 6 recovered after a retry, 1 needed the safe default and 1 was overridden by the guardrail. For T900099 the `ConnectionError` is passed up to the caller, and Part D turns it into a 503.
+That is 19 model calls in total: 3 notes were valid first time, 6 recovered after a retry and 1 needed the safe default. For T900099 the `ConnectionError` is passed up for Part D to turn into a 503.
 
-**Why the retries and checks are needed:** a hosted model is not reliable. It can wrap the JSON in prose, cut it off, drop a field or make up a value, and the same prompt can fail twice in a row and then succeed (S9). Without the gates, a bad note would reach an analyst or crash the service. S7 shows the policy check matters: that reply was valid JSON but cited the wrong policy. The guardrail and the safe default mean a flagged payment is never approved automatically.
+**Why this matters:** a hosted model can wrap JSON in prose, cut it off, drop a field or make up a value, and the same prompt can fail and then succeed (S9). S7 was valid JSON but cited the wrong policy, which only Gate 3 catches.
 
-## Part D: Triage service (`app.py`, `smoke_test.py`)
+## Part D — FastAPI Service and Smoke Tests
 
-Run `uvicorn app:app --port 8000` in one terminal and `python smoke_test.py` in another. Restart the server before every smoke run, because the mock model remembers how many times it has seen each transaction ID.
+| Situation | Response |
+|---|---|
+| Impossible amount, hour, txn count, avg amount or category | **400** `{"error", "field"}`, before the model is called |
+| Missing or wrongly typed field | **422** from FastAPI |
+| Not flagged, but amount ≥ INR 100,000 on a new device | `hold_for_review` |
+| No policy matches the question | No note; flagged payments are held |
+| Case-note model unavailable (T900099) | **503**; the service keeps running |
 
-The service rebuilds the model once at start-up and exposes `/health`, `/score`, `/case` and `/metrics`. My own checks reject bad business values with a 400 (`{"error", "field"}`) before the model is called. FastAPI rejects missing or wrongly typed fields with a 422. A payment the model doesn't flag is still held if it's INR 100,000 or more on a new device. If the case-note model is down, `/case` returns a 503 with a fixed message and the service keeps running. One middleware writes one `service.log` line per POST and updates the counters.
+One middleware writes one `service.log` line per POST and updates the `/metrics` counters.
 
-**Smoke test (fresh server): 11/11 pass** (happy 3/3, escalation 4/4, edge 4/4).
+**Smoke test (fresh server): 11/11 pass.**
 
 | Id | Request | Result |
 |---|---|---|
@@ -123,20 +190,44 @@ The service rebuilds the model once at start-up and exposes `/health`, `/score`,
  "avg_latency_ms": 11.32, "human_review_total": 5, "human_review_rate": 0.5}
 ```
 
-`service.log` has exactly 10 lines (5 INFO, 4 WARNING, 1 ERROR) and no stack traces. Examples:
-```
-2026-10-23 21:11:30,682 INFO /score status=200 latency_ms=13.4 txn_id=T100001 probability=0.1312 human_review=False
+`service.log` records every run, with one line per POST and no stack traces:
+
+| Run | Time | Lines | INFO | WARNING | ERROR |
+|---|---|---:|---:|---:|---:|
+| Smoke test 1 | 2026-10-23 21:11 | 10 | 5 | 4 | 1 |
+| Smoke test 2 | 2026-10-24 00:05 | 10 | 5 | 4 | 1 |
+| Extra check T900006 (×2) | 2026-10-24 00:07 | 2 | 1 | 1 | 0 |
+| Smoke test 3 | 2026-10-24 00:08 | 10 | 5 | 4 | 1 |
+| **Total** | | **32** | **16** | **13** | **3** |
+
+Each smoke run gives the expected 10 lines (5 INFO, 4 WARNING, 1 ERROR). Example:
+
+```text
 2026-10-23 21:11:30,815 WARNING /case status=200 latency_ms=14.6 txn_id=T900005 probability=0.9596 human_review=True safe_default=True
-2026-10-23 21:11:30,849 ERROR /case status=503 latency_ms=14.4 txn_id=T900099 probability=0.9596
 ```
 
-**Extra check (separate fresh server, `python smoke_test.py --extra`):** T900006 scores 0.4272. That is flagged, but it's below the 0.5 guardrail inside `run_case`. The mock answers `approve`, so the app's own rule changes it to `hold_for_review` and sets `guardrail_override: true`. That's why the app checks every flagged case itself, not just cases above 0.5. The brief's payload scores about 0.4391; I built my own, also between 0.4 and 0.5.
+**Extra check (`python smoke_test.py --extra`, fresh server):** T900006 scores 0.4272, so it is flagged but below the 0.5 guardrail in `run_case`. The mock answers `approve`, and the app's own rule changes it to `hold_for_review` with `guardrail_override: true`. That's why the app checks every flagged case itself.
 
 ## Limitations
 
-- The data is synthetic, so the precision, recall and threshold won't carry over to real Razorpay traffic without retraining.
-- At t\* = 0.4 only about 28% of held payments are fraud, so most of the analysts' work is clearing false alarms.
-- TF-IDF only matches words. A question phrased with different words than the policy (e.g. "late-night" vs "midnight") can be refused even when a policy applies.
-- The counters live in memory, so they reset on restart and aren't shared if the service runs several workers.
-- `mock_llm` is deterministic and offline. A real hosted model would add latency, cost, timeouts and new failure types that these tests don't cover.
-- The model is retrained at every start-up, which is fine for 6,000 rows but would be too slow on real data volumes.
+1. **Synthetic data:** the metrics and threshold won't carry over to real traffic without retraining.
+2. **Review workload:** only about 28% of held payments are fraud, so analysts mostly clear false alarms.
+3. **Lexical retrieval:** TF-IDF only matches words, so a differently phrased question (e.g. "late-night" vs "midnight") can be refused.
+4. **Mock LLM:** a real hosted model would add latency, cost, timeouts and failure types these tests don't cover.
+5. **In-memory metrics:** the counters reset on restart and aren't shared across workers.
+6. **Retraining at start-up:** fine for 6,000 rows, but too slow at real data volumes.
+
+## Technology Stack
+
+- Python
+- pandas and NumPy
+- scikit-learn
+- TF-IDF and cosine similarity
+- FastAPI
+- Pydantic
+- Uvicorn
+- Git and GitHub
+
+## Disclaimer
+
+This repository is an independent educational portfolio project. It is not affiliated with, endorsed by, or an official product of Razorpay. The service and results are for demonstration purposes only and should not be used as the sole basis for real financial or fraud decisions.
