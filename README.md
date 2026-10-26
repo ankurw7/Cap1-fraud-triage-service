@@ -208,6 +208,8 @@ Each smoke run gives the expected 10 lines (5 INFO, 4 WARNING, 1 ERROR). Example
 
 **Extra check (`python smoke_test.py --extra`, fresh server):** T900006 scores 0.4272, so it is flagged but below the 0.5 guardrail in `run_case`. The mock answers `approve`, and the app's own rule changes it to `hold_for_review` with `guardrail_override: true`. That's why the app checks every flagged case itself.
 
+**Trying it by hand: while the server is running, open http://127.0.0.1:8000/docs in a browser. FastAPI's built-in page lets you send /score and /case requests and see the responses. Those requests also count towards /metrics, so restart before the smoke test.
+
 ## Limitations
 
 1. **Synthetic data:** the metrics and threshold won't carry over to real traffic without retraining.
